@@ -9,8 +9,9 @@ import ffmpeg
 import pathlib as pl
 import twARHMM_analysis.SETTINGS as SETTINGS
 
-# TODO: Set up functions for tiling videos so all of the same state are viewable
-# together. Have color of states change with state number. Add info to bottom of video
+#TODO: Set up functions for tiling videos so all of the same state are viewable
+# together. Have color of states change with state number. Add session info to bottom of
+# video
 
 #%% Setting video file paths
 mouse = "0428"
