@@ -11,7 +11,9 @@ import twARHMM_analysis.SETTINGS as SETTINGS
 
 #TODO: Set up functions for tiling videos so all of the same state are viewable
 # together. Have color of states change with state number. Add session info to bottom of
-# video
+# video. Make into function taking paths as arguements. Allow it to iterate through
+# different mice. Allow to give a subset of dates to focus on incase you want to just
+# generate videos for new recordings on a daily basis
 
 #%% Setting video file paths
 mouse = "0428"
@@ -19,6 +21,7 @@ video_root = SETTINGS.local_raw_data_dir + mouse + "/NickNick/"
 directory_csv = SETTINGS.local_raw_data_dir + mouse + "/DirectoryKey.csv"
 observation_csv = SETTINGS.local_raw_data_dir + mouse + "/data_p97.csv"
 tw_data_root = SETTINGS.talapas_user + "wehrlab/twARHMM_results/"
+# tw_data_root = SETTINGS.local_processed_data_dir + "twARHMM_results/"
 mouse_processed_folder = SETTINGS.local_raw_data_dir + mouse + "/ProcessedData/"
 processed_save_folder_root = SETTINGS.local_processed_data_dir
 for data_dir in pl.Path(tw_data_root).iterdir():
@@ -40,6 +43,7 @@ for data_dir in pl.Path(tw_data_root).iterdir():
     expected_states = np.load(states_file)
     discrete_states = expected_states[0].sum(axis=2)
     total_states = discrete_states.shape[-1]
+    print("Current processing model has {} states".format(total_states))
     directory_map = pd.read_csv(directory_csv)
 
     ##%% Iterate through and grab video labels
