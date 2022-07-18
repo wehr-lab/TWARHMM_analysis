@@ -30,7 +30,8 @@ def state_label_videos(video_root, directory_key, observation_csv,
                        model_results_folder, mouse_processed_folder, save_folder,
                        video_to_label_pattern='Sky_mouse*[!labeled].mp4'):
     """
-
+    Takes videos and labels each frame with the state the twARHMM predicts the
+    mouse + cricket are in.
     Args:
         video_root (pathlib.Path or str): Path to folder containing all of the
         raw mouse folders which have the videos to be labeled.
@@ -148,3 +149,58 @@ def state_label_videos(video_root, directory_key, observation_csv,
             for frame in tqdm(range(video.shape[0])):
                 output.write(cv2.cvtColor(video[frame], cv2.COLOR_BGR2RGB))
             output.release()
+
+
+# TODO: Take the already labeled videos and split by state. Then create separate funciton to take these videos
+#  and tile them for observation purposes.
+test_model_folder = "/Users/Matt/Desktop/Research/Wehr/talapas_home/wehrlab/twARHMM_results/Tue Jun 28 16:12:55 2022"
+test_save_folder = "/Users/Matt/Desktop/Research/Wehr/data/processed/0428/sep_states"
+test_vid_root = "/Users/Matt/Desktop/Research/Wehr/data/processed/0428"
+
+"""
+trimmed = input.trim(start_frame=land_frame, end_frame=capture_frame)
+trimmed_reset = trimmed.setpts('PTS-STARTPTS')
+out = ffmpeg.output(trimmed_reset, "pipe:", f="rawvideo", pix_fmt="rgb24")
+feed, _ = out.run(capture_stdout=True)
+"""
+
+
+def separate_videos(state_video_root, model_results_folder, directory_key,
+                    observation_csv, save_folder):
+
+    directory_map = pd.read_csv(directory_key)
+    for file in pl.Path(model_results_folder).glob("*.npy"):
+        print("Scanning file: {}".format(file))
+        file = str(file)
+        if re.match(".*log_posteriors.npy", file):
+            lps_file = deepcopy(file)
+        elif re.match(".*posteriors_states.npy", file):
+            states_file = deepcopy(file)
+    states = np.load(str(states_file))
+    discrete_states = states[0].sum(axis=2)
+    total_states = discrete_states.shape[-1]
+    final_states = np.array([discrete_states[i].argmax() for i in range(discrete_states.shape[-2])])
+    states_frame = pd.DataFrame({"state": final_states})
+    observations = pd.read_csv(str(observation_csv))
+    states_frame["ID"] = observations.ID
+
+    for folder in pl.Path(state_video_root).glob("*mouse*"):
+        id_number = directory_map[directory_map["Directory"] == folder.name].ID.item()
+        id_frame = states_frame[states_frame["ID"] == id_number]
+        for state_dir in folder.glob("*_12_*"):
+            for file in state_dir.glob("state*.mp4"):
+                input = ffmpeg.input(file)
+                current_state = 12313
+                current_frame = 0
+                epoch_start = True
+                for index, frame_state in id_frame["State"].iterrows():
+                    if epoch_start:
+                        start_frame = current_frame
+                        epoch_start = False
+                    if frame_state == current_state:
+                        current_frame += 1
+                    elif frame_state != current_state:
+                        current_state = frame_state
+
+
+
