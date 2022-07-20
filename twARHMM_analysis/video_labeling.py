@@ -14,7 +14,7 @@ import twARHMM_analysis.SETTINGS as SETTINGS
 #  video. Make into function taking paths as arguements. Allow it to iterate through
 #  different mice. Allow to give a subset of dates to focus on incase you want to just
 #  generate videos for new recordings on a daily basis
-
+#  ADD IN LINE COMMENTS FOR YOUR CODE YOU IJIT.
 #%% Setting video file paths
 mouse = "0428"
 video_root = SETTINGS.local_raw_data_dir + mouse + "/NickNick/"
