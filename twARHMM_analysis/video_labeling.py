@@ -153,9 +153,6 @@ def state_label_videos(video_root, directory_key, observation_csv,
 
 # TODO: Take the already labeled videos and split by state. Then create separate funciton to take these videos
 #  and tile them for observation purposes.
-test_model_folder = "/Users/Matt/Desktop/Research/Wehr/talapas_home/wehrlab/twARHMM_results/Tue Jun 28 16:12:55 2022"
-test_save_folder = "/Users/Matt/Desktop/Research/Wehr/data/processed/0428/sep_states"
-test_vid_root = "/Users/Matt/Desktop/Research/Wehr/data/processed/0428"
 
 """
 trimmed = input.trim(start_frame=land_frame, end_frame=capture_frame)
@@ -165,6 +162,7 @@ feed, _ = out.run(capture_stdout=True)
 """
 
 
+#%% Function for separating videos into states.
 def separate_videos(state_video_root, model_results_folder, directory_key,
                     observation_csv, save_folder):
 
@@ -179,6 +177,7 @@ def separate_videos(state_video_root, model_results_folder, directory_key,
     states = np.load(str(states_file))
     discrete_states = states[0].sum(axis=2)
     total_states = discrete_states.shape[-1]
+    label_array = np.zeros(total_states).astype("int")
     final_states = np.array([discrete_states[i].argmax() for i in range(discrete_states.shape[-2])])
     states_frame = pd.DataFrame({"state": final_states})
     observations = pd.read_csv(str(observation_csv))
@@ -193,14 +192,59 @@ def separate_videos(state_video_root, model_results_folder, directory_key,
                 current_state = 12313
                 current_frame = 0
                 epoch_start = True
-                for index, frame_state in id_frame["State"].iterrows():
-                    if epoch_start:
-                        start_frame = current_frame
-                        epoch_start = False
-                    if frame_state == current_state:
+                vid_start = True
+                print("Now cutting up the video")
+                for index, frame_state in tqdm(id_frame["state"].items()):
+                    if (frame_state == current_state) & (not epoch_start):
                         current_frame += 1
                     elif frame_state != current_state:
-                        current_state = frame_state
+                        epoch_start = True
+                        if epoch_start & vid_start:
+                            current_state = frame_state
+                            start_frame = current_frame
+                            vid_start = False
+                            epoch_start = False
+                        elif epoch_start & (not vid_start):
+                            end_frame = current_frame
+                            save_state_dir = save_folder + "state_{}/".format(current_state)
+                            pl.Path(save_state_dir).mkdir(parents=True, exist_ok=True)
+                            trimmed = input.trim(start_frame=start_frame, end_frame=end_frame)
+                            trimmed_reset = trimmed.setpts('PTS-STARTPTS')
+                            out = ffmpeg.output(trimmed_reset,
+                                                save_state_dir + "state_{0}_{1}.mp4".format(current_state, label_array[current_state]),
+                                                f="mp4")
+                            ffmpeg.run(out, overwrite_output=True)
+                            label_array[current_state] += 1
+                            current_state = frame_state
+                            current_frame += 1
+                            start_frame = current_frame
+                            input = ffmpeg.input(file)
+                            epoch_start = False
+
+                        # TODO Need to identify how to trim and save out videos.
+                        #  Current idea is when state doesn't match, assign the
+                        #  end frame for trimming to be the current frame - 1
+                        #  Then need to reset video grab. Maybe have the if statements
+                        #  contain multiple simultaneous checks? Can't think of more
+                        #  optimal way currently.
+
+#%% Test of the above definition
+mouse = "0428"
+test_model_folder = "/Users/Matt/Desktop/Research/Wehr/talapas_home/wehrlab/twARHMM_results/Tue Jun 28 16:12:55 2022/"
+test_save_folder = "/Users/Matt/Desktop/Research/Wehr/data/processed/0428/sep_states/"
+test_vid_root = "/Users/Matt/Desktop/Research/Wehr/data/processed/0428/"
+directory_csv = SETTINGS.local_raw_data_dir + mouse + "/DirectoryKey.csv"
+observation_csv = SETTINGS.local_raw_data_dir + mouse + "/data_p97.csv"
 
 
+separate_videos(test_vid_root, test_model_folder, directory_csv, observation_csv,
+                test_save_folder)
 
+
+#####################################################
+# TODO: Write a function that will calculate the maximum state likelyhood for each frame and
+#  append it to the observation frame. We then want to have the given probability value of said
+#  state also stored for future indexing purposes. Contemplate if it would be better to save this
+#  out or not, and if so, what format.  We then want to find 9 or so examples per state with the
+#  highest probability and that also last for at least X number of frames so as to avoid random
+#  errors in state assignment.
