@@ -108,8 +108,7 @@ def state_label_videos(video_root, directory_key, observation_csv,
                     # since python starts at 0 and Matlab starts ay 1
                     sky_row = alignment_csv.loc[alignment_csv["name"] == "Sky"]
                     land_frame = int(sky_row["Land"][0] - 1)
-                    capture_frame = int(sky_row["TerminalCap"][
-                                            0])  # Not taking one frame off the end since Nick thinks he included an extra frame for the data calculation at the end
+                    capture_frame = int(sky_row["TerminalCap"][0])  # Not taking one frame off the end since Nick thinks he included an extra frame for the data calculation at the end
                     fps = sky_row["sampleRate"][0]
                     # Load the file with ffmpeg and then crop to just the needed video range so it matches data
                     input = ffmpeg.input(file)
@@ -163,8 +162,24 @@ feed, _ = out.run(capture_stdout=True)
 
 
 #%% Function for separating videos into states.
+# TODO: Add in funcitonality to use raw videos and not just pre-trimmed. IE incorportate
+#  the alignment csv into this
 def separate_videos(state_video_root, model_results_folder, directory_key,
                     observation_csv, save_folder):
+    """
+    Takes a bunch of pre_made state videos and cuts them into one video per state
+    cluster. Tjis can results in hundreds of video per trial depending on how often
+    the state switches.
+    Args:
+        state_video_root ():
+        model_results_folder ():
+        directory_key ():
+        observation_csv ():
+        save_folder ():
+
+    Returns:
+
+    """
 
     directory_map = pd.read_csv(directory_key)
     for file in pl.Path(model_results_folder).glob("*.npy"):
@@ -244,7 +259,56 @@ separate_videos(test_vid_root, test_model_folder, directory_csv, observation_csv
 #####################################################
 # TODO: Write a function that will calculate the maximum state likelyhood for each frame and
 #  append it to the observation frame. We then want to have the given probability value of said
-#  state also stored for future indexing purposes. Contemplate if it would be better to save this
-#  out or not, and if so, what format.  We then want to find 9 or so examples per state with the
-#  highest probability and that also last for at least X number of frames so as to avoid random
-#  errors in state assignment.
+#  state also stored for future indexing purposes. Need to also include frame numbers for raw videos
+#  Contemplate if it would be better to save this out or not, and if so, what format.
+#  We then want to find 9 or so examples per state with the highest probability and
+#  that also last for at least X number of frames so as to avoid random errors in state assignment.
+
+def append_estiamted_states(observation_frame, estimated_states):
+
+    # Find best most likely state index position
+    best_state = np.array([estimated_states[i].argmax() for i in range(estimated_states.shape[-2])])
+    # Get probability value of each state
+    state_probs = estimated_states[np.arange(estimated_states.shape[0]), best_state]
+
+    # Append state index and value
+    observation_frame["best_state"] = best_state
+    observation_frame["state_probability"] = state_probs
+
+    return observation_frame
+
+mouse = "0428"
+video_root = SETTINGS.local_raw_data_dir + mouse + "/NickNick/"
+directory_csv = SETTINGS.local_raw_data_dir + mouse + "/DirectoryKey.csv"
+observation_csv = SETTINGS.local_raw_data_dir + mouse + "/data_p97.csv"
+tw_data_root = SETTINGS.talapas_user + "wehrlab/twARHMM_results/"
+# tw_data_root = SETTINGS.local_processed_data_dir + "twARHMM_results/"
+mouse_processed_folder = SETTINGS.local_raw_data_dir + mouse + "/ProcessedData/"
+processed_save_folder_root = SETTINGS.local_processed_data_dir
+alignmnet_csv = "/Users/Matt/Desktop/Research/Wehr/data/raw/0428/ProcessedData/2021-08-19_15-12-12_mouse-0428/Alignment.csv"
+
+# This function needs to take alignment data to get initial frame for each video
+# and then generate the rest of the frame numbers to ultimately append to a csv
+alignment_csv = pd.read_csv(str(mouse_processed_folder) + mouse_directory + "/Alignment.csv")
+
+
+def append_video_frame_data(observation_frame, alignment_root, directory_map):
+    concat_frame = pd.DataFrame(columns=["raw_frame", "trimmed_frame"])
+    for id_value in range(observation_frame["ID"].max()+1):
+        sub_obs = observation_frame[observation_frame["ID"] == id_value]
+        index_array = sub_obs.index.to_numpy()
+        mouse_directory = directory_map.loc[directory_map["ID"] == id_value].Directory.item()
+        alignment_csv = pd.read_csv(str(alignment_root) + mouse_directory + "/Alignment.csv")
+        sky_row = alignment_csv.loc[alignment_csv["name"] == "Sky"]
+        land_frame = int(sky_row["Land"][0] - 1)
+        capture_frame = int(sky_row["TerminalCap"][0])
+        raw_frames = np.arange(land_frame, capture_frame, 1)
+        trimmed_frames = np.arange(0, capture_frame-land_frame, 1)
+        add_frame = pd.DataFrame(columns=["raw_frame", "trimmed_frame"])
+        add_frame["raw_frame"] = raw_frames
+        add_frame["trimmed_frame"] = trimmed_frames
+        add_frame.index = index_array
+        concat_frame = pd.concat([concat_frame, add_frame])
+
+    observation_frame = observation_frame.join(concat_frame)
+    return observation_frame
