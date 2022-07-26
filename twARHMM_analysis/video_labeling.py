@@ -7,15 +7,15 @@ from copy import deepcopy
 import cv2
 import ffmpeg
 import pathlib as pl
-import twARHMM_analysis.SETTINGS as SETTINGS
 
 # TODO: Set up functions for tiling videos so all of the same state are viewable
 #  together. Have color of states change with state number. Add session info to bottom of
 #  video. Make into function taking paths as arguements. Allow it to iterate through
 #  different mice. Allow to give a subset of dates to focus on incase you want to just
 #  generate videos for new recordings on a daily basis
-#  ADD IN LINE COMMENTS FOR YOUR CODE YOU IJIT.
+#  ADD IN-LINE COMMENTS FOR YOUR CODE YOU IJIT.
 #%% Setting video file paths
+"""
 mouse = "0428"
 video_root = SETTINGS.local_raw_data_dir + mouse + "/NickNick/"
 directory_csv = SETTINGS.local_raw_data_dir + mouse + "/DirectoryKey.csv"
@@ -24,10 +24,11 @@ tw_data_root = SETTINGS.talapas_user + "wehrlab/twARHMM_results/"
 # tw_data_root = SETTINGS.local_processed_data_dir + "twARHMM_results/"
 mouse_processed_folder = SETTINGS.local_raw_data_dir + mouse + "/ProcessedData/"
 processed_save_folder_root = SETTINGS.local_processed_data_dir
-
+"""
 
 def state_label_videos(video_root, directory_key, observation_csv,
                        model_results_folder, mouse_processed_folder, save_folder,
+                       mouse,
                        video_to_label_pattern='Sky_mouse*[!labeled].mp4'):
     """
     Takes videos and labels each frame with the state the twARHMM predicts the
@@ -48,6 +49,8 @@ def state_label_videos(video_root, directory_key, observation_csv,
         the observation_csv.
         save_folder (pathlib.Path or str): Path to directory that mouse folders
         will be created in and outputs will be saved too.
+        mouse (str): String of the mouse's name. Main variable to allow for iteration
+        through multiple mice one at a time.
         video_to_label_pattern (regex string): String that will be used in
         pathlib.Path.glob() search to find the videos that will be labeled.
         Defaults to a pattern to recognize our sky camera videos.
@@ -137,7 +140,7 @@ def state_label_videos(video_root, directory_key, observation_csv,
                 frame_id += 1
 
         if video_in_buffer:
-            video_save_root = pl.Path(str(save_folder) + "0428/" + mouse_directory +
+            video_save_root = pl.Path(str(save_folder) + mouse + "/" + mouse_directory +
                                       "/state_labeled_videos" + "twARHMM_{}_states".format(total_states))
             video_save_root.mkdir(parents=True, exist_ok=True)  # Make sure dir exists
             video_save_name = pl.Path(str(video_save_root) +
@@ -149,16 +152,6 @@ def state_label_videos(video_root, directory_key, observation_csv,
                 output.write(cv2.cvtColor(video[frame], cv2.COLOR_BGR2RGB))
             output.release()
 
-
-# TODO: Take the already labeled videos and split by state. Then create separate funciton to take these videos
-#  and tile them for observation purposes.
-
-"""
-trimmed = input.trim(start_frame=land_frame, end_frame=capture_frame)
-trimmed_reset = trimmed.setpts('PTS-STARTPTS')
-out = ffmpeg.output(trimmed_reset, "pipe:", f="rawvideo", pix_fmt="rgb24")
-feed, _ = out.run(capture_stdout=True)
-"""
 
 
 #%% Function for separating videos into states.
@@ -236,35 +229,23 @@ def separate_videos(state_video_root, model_results_folder, directory_key,
                             input = ffmpeg.input(file)
                             epoch_start = False
 
-                        # TODO Need to identify how to trim and save out videos.
-                        #  Current idea is when state doesn't match, assign the
-                        #  end frame for trimming to be the current frame - 1
-                        #  Then need to reset video grab. Maybe have the if statements
-                        #  contain multiple simultaneous checks? Can't think of more
-                        #  optimal way currently.
 
-#%% Test of the above definition
-mouse = "0428"
-test_model_folder = "/Users/Matt/Desktop/Research/Wehr/talapas_home/wehrlab/twARHMM_results/Tue Jun 28 16:12:55 2022/"
-test_save_folder = "/Users/Matt/Desktop/Research/Wehr/data/processed/0428/sep_states/"
-test_vid_root = "/Users/Matt/Desktop/Research/Wehr/data/processed/0428/"
-directory_csv = SETTINGS.local_raw_data_dir + mouse + "/DirectoryKey.csv"
-observation_csv = SETTINGS.local_raw_data_dir + mouse + "/data_p97.csv"
+def append_estiamted_states(observation_frame: pd.DataFrame, estimated_states: np.ndarray):
+    """
+    Function for adding the inferred state for each frame in a video as well as
+    the probability associated with that inferred state.
+    Args:
+        observation_frame (pandas.DataFrame):Dataframe containing all observations
+        used for training the model. Frame values will be appened to this frame.
+        estimated_states (numpy.ndarray): Array containing the probabilities of
+        each state being the correct one, summed across time constants. Generated
+        by ssm.GaussianTWARHMM.fit.
 
+    Returns:
+        observation_frame (pandas.DataFrame): Input observation_frame with columns
+        "best_state" and "state_probability" appended.
 
-separate_videos(test_vid_root, test_model_folder, directory_csv, observation_csv,
-                test_save_folder)
-
-
-#####################################################
-# TODO: Write a function that will calculate the maximum state likelyhood for each frame and
-#  append it to the observation frame. We then want to have the given probability value of said
-#  state also stored for future indexing purposes. Need to also include frame numbers for raw videos
-#  Contemplate if it would be better to save this out or not, and if so, what format.
-#  We then want to find 9 or so examples per state with the highest probability and
-#  that also last for at least X number of frames so as to avoid random errors in state assignment.
-
-def append_estiamted_states(observation_frame, estimated_states):
+    """
 
     # Find best most likely state index position
     best_state = np.array([estimated_states[i].argmax() for i in range(estimated_states.shape[-2])])
@@ -277,22 +258,31 @@ def append_estiamted_states(observation_frame, estimated_states):
 
     return observation_frame
 
-mouse = "0428"
-video_root = SETTINGS.local_raw_data_dir + mouse + "/NickNick/"
-directory_csv = SETTINGS.local_raw_data_dir + mouse + "/DirectoryKey.csv"
-observation_csv = SETTINGS.local_raw_data_dir + mouse + "/data_p97.csv"
-tw_data_root = SETTINGS.talapas_user + "wehrlab/twARHMM_results/"
-# tw_data_root = SETTINGS.local_processed_data_dir + "twARHMM_results/"
-mouse_processed_folder = SETTINGS.local_raw_data_dir + mouse + "/ProcessedData/"
-processed_save_folder_root = SETTINGS.local_processed_data_dir
-alignmnet_csv = "/Users/Matt/Desktop/Research/Wehr/data/raw/0428/ProcessedData/2021-08-19_15-12-12_mouse-0428/Alignment.csv"
-
 # This function needs to take alignment data to get initial frame for each video
 # and then generate the rest of the frame numbers to ultimately append to a csv
-alignment_csv = pd.read_csv(str(mouse_processed_folder) + mouse_directory + "/Alignment.csv")
 
+# TODO: Update the directory map docstring when there is a "final" function
+def append_video_frame_data(observation_frame: pd.DataFrame, alignment_root,
+                            directory_map: pd.DataFrame):
+    """
+    Function for adding the raw video frame for each observation (ie the frame in
+    the original video where the observation would have been calculated) and the
+    trimmed video frame for each observation (ie the frame number relative to the
+    start of the hunt where the observations begin)
 
-def append_video_frame_data(observation_frame, alignment_root, directory_map):
+    Args:
+        observation_frame (pandas.DataFrame): Dataframe containing all observations
+        used for training the model. Frame values will be appened to this frame.
+        alignment_root (str or pathlib.Path): Path to folder contianign all mouse
+        processed folder that would contain the file Alignment.csv
+        directory_map (pd.DataFrame): Dataframe containing two columns: Generated
+        by BLANKETY-BLAKETY-BLANK
+
+    Returns:
+        observation_frame (pandas.DataFrame): Input observation_frame with columns
+        "raw_frame" and "trimmed_frame" appended.
+
+    """
     concat_frame = pd.DataFrame(columns=["raw_frame", "trimmed_frame"])
     for id_value in range(observation_frame["ID"].max()+1):
         sub_obs = observation_frame[observation_frame["ID"] == id_value]
@@ -312,3 +302,4 @@ def append_video_frame_data(observation_frame, alignment_root, directory_map):
 
     observation_frame = observation_frame.join(concat_frame)
     return observation_frame
+
