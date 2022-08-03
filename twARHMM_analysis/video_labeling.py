@@ -7,10 +7,11 @@ from copy import deepcopy
 import cv2
 import ffmpeg
 import pathlib as pl
+import time
 
 # TODO: Set up functions for tiling videos so all of the same state are viewable
 #  together. Have color of states change with state number. Add session info to bottom of
-#  video. Make into function taking paths as arguements. Allow it to iterate through
+#  video. Make into function taking paths as arguments. Allow it to iterate through
 #  different mice. Allow to give a subset of dates to focus on incase you want to just
 #  generate videos for new recordings on a daily basis
 #  ADD IN-LINE COMMENTS FOR YOUR CODE YOU IJIT.
@@ -26,6 +27,7 @@ mouse_processed_folder = SETTINGS.local_raw_data_dir + mouse + "/ProcessedData/"
 processed_save_folder_root = SETTINGS.local_processed_data_dir
 """
 
+
 def state_label_videos(video_root, directory_key, observation_csv,
                        model_results_folder, mouse_processed_folder, save_folder,
                        mouse,
@@ -34,7 +36,7 @@ def state_label_videos(video_root, directory_key, observation_csv,
     Takes videos and labels each frame with the state the twARHMM predicts the
     mouse + cricket are in.
     Args:
-        video_root (pathlib.Path or str): Path to folder containing all of the
+        video_root (pathlib.Path or str): Path to folder containing all the
         raw mouse folders which have the videos to be labeled.
         directory_key (pathlib.Path or str): Path to csv that contains mappings
         from observation ID number to video directory path
@@ -114,8 +116,8 @@ def state_label_videos(video_root, directory_key, observation_csv,
                     capture_frame = int(sky_row["TerminalCap"][0])  # Not taking one frame off the end since Nick thinks he included an extra frame for the data calculation at the end
                     fps = sky_row["sampleRate"][0]
                     # Load the file with ffmpeg and then crop to just the needed video range so it matches data
-                    input = ffmpeg.input(file)
-                    trimmed = input.trim(start_frame=land_frame, end_frame=capture_frame)
+                    input_file = ffmpeg.input(file)
+                    trimmed = input_file.trim(start_frame=land_frame, end_frame=capture_frame)
                     trimmed_reset = trimmed.setpts('PTS-STARTPTS')
                     out = ffmpeg.output(trimmed_reset, "pipe:", f="rawvideo", pix_fmt="rgb24")
                     feed, _ = out.run(capture_stdout=True)
@@ -155,13 +157,13 @@ def state_label_videos(video_root, directory_key, observation_csv,
 
 
 #%% Function for separating videos into states.
-# TODO: Add in funcitonality to use raw videos and not just pre-trimmed. IE incorportate
+# TODO: Add in functionality to use raw videos and not just pre-trimmed. IE incorporate
 #  the alignment csv into this
 def separate_videos(state_video_root, model_results_folder, directory_key,
                     observation_csv, save_folder):
     """
     Takes a bunch of pre_made state videos and cuts them into one video per state
-    cluster. Tjis can results in hundreds of video per trial depending on how often
+    cluster. This can result in hundreds of video per trial depending on how often
     the state switches.
     Args:
         state_video_root ():
@@ -196,7 +198,7 @@ def separate_videos(state_video_root, model_results_folder, directory_key,
         id_frame = states_frame[states_frame["ID"] == id_number]
         for state_dir in folder.glob("*_12_*"):
             for file in state_dir.glob("state*.mp4"):
-                input = ffmpeg.input(file)
+                input_file = ffmpeg.input(file)
                 current_state = 12313
                 current_frame = 0
                 epoch_start = True
@@ -216,7 +218,7 @@ def separate_videos(state_video_root, model_results_folder, directory_key,
                             end_frame = current_frame
                             save_state_dir = save_folder + "state_{}/".format(current_state)
                             pl.Path(save_state_dir).mkdir(parents=True, exist_ok=True)
-                            trimmed = input.trim(start_frame=start_frame, end_frame=end_frame)
+                            trimmed = input_file.trim(start_frame=start_frame, end_frame=end_frame)
                             trimmed_reset = trimmed.setpts('PTS-STARTPTS')
                             out = ffmpeg.output(trimmed_reset,
                                                 save_state_dir + "state_{0}_{1}.mp4".format(current_state, label_array[current_state]),
@@ -226,17 +228,18 @@ def separate_videos(state_video_root, model_results_folder, directory_key,
                             current_state = frame_state
                             current_frame += 1
                             start_frame = current_frame
-                            input = ffmpeg.input(file)
+                            input_file = ffmpeg.input(file)
                             epoch_start = False
 
 
-def append_estiamted_states(observation_frame: pd.DataFrame, estimated_states: np.ndarray):
+def append_estimated_states(observation_frame: pd.DataFrame,
+                            estimated_states: np.ndarray) -> pd.DataFrame:
     """
     Function for adding the inferred state for each frame in a video as well as
     the probability associated with that inferred state.
     Args:
         observation_frame (pandas.DataFrame):Dataframe containing all observations
-        used for training the model. Frame values will be appened to this frame.
+        used for training the model. Frame values will be appended to this frame.
         estimated_states (numpy.ndarray): Array containing the probabilities of
         each state being the correct one, summed across time constants. Generated
         by ssm.GaussianTWARHMM.fit.
@@ -247,8 +250,9 @@ def append_estiamted_states(observation_frame: pd.DataFrame, estimated_states: n
 
     """
 
-    # Find best most likely state index position
-    best_state = np.array([estimated_states[i].argmax() for i in range(estimated_states.shape[-2])])
+    # Find the most likely state index position
+    print("Matching most likely state for each observation")
+    best_state = np.array([estimated_states[i].argmax() for i in tqdm(range(estimated_states.shape[-2]))])
     # Get probability value of each state
     state_probs = estimated_states[np.arange(estimated_states.shape[0]), best_state]
 
@@ -261,9 +265,10 @@ def append_estiamted_states(observation_frame: pd.DataFrame, estimated_states: n
 # This function needs to take alignment data to get initial frame for each video
 # and then generate the rest of the frame numbers to ultimately append to a csv
 
+
 # TODO: Update the directory map docstring when there is a "final" function
 def append_video_frame_data(observation_frame: pd.DataFrame, alignment_root,
-                            directory_map: pd.DataFrame):
+                            directory_map: pd.DataFrame) -> pd.DataFrame:
     """
     Function for adding the raw video frame for each observation (ie the frame in
     the original video where the observation would have been calculated) and the
@@ -272,11 +277,11 @@ def append_video_frame_data(observation_frame: pd.DataFrame, alignment_root,
 
     Args:
         observation_frame (pandas.DataFrame): Dataframe containing all observations
-        used for training the model. Frame values will be appened to this frame.
-        alignment_root (str or pathlib.Path): Path to folder contianign all mouse
+        used for training the model. Frame values will be appended to this frame.
+        alignment_root (str or pathlib.Path): Path to folder containing all mouse
         processed folder that would contain the file Alignment.csv
         directory_map (pd.DataFrame): Dataframe containing two columns: Generated
-        by BLANKETY-BLAKETY-BLANK
+        by BLANKETY-BLANKETY-BLANK
 
     Returns:
         observation_frame (pandas.DataFrame): Input observation_frame with columns
@@ -284,7 +289,8 @@ def append_video_frame_data(observation_frame: pd.DataFrame, alignment_root,
 
     """
     concat_frame = pd.DataFrame(columns=["raw_frame", "trimmed_frame"])
-    for id_value in range(observation_frame["ID"].max()+1):
+    print("Matching frames to observations")
+    for id_value in tqdm(range(observation_frame["ID"].max()+1)):
         sub_obs = observation_frame[observation_frame["ID"] == id_value]
         index_array = sub_obs.index.to_numpy()
         mouse_directory = directory_map.loc[directory_map["ID"] == id_value].Directory.item()
@@ -302,4 +308,94 @@ def append_video_frame_data(observation_frame: pd.DataFrame, alignment_root,
 
     observation_frame = observation_frame.join(concat_frame)
     return observation_frame
+
+
+def best_state_examples(observation_frame: pd.DataFrame, min_duration: int = 20)\
+        -> pd.DataFrame:
+    """
+    Funciton for identifying 9 of the highest confidence predictions of each state
+    to create a tiled video from.
+
+    Args:
+        observation_frame (pandas.DataFrame): Dataframe that contains columns
+        for ID, frame numbers, estimated state, and state probability.
+        min_duration (int): Minimum number of frames for the state to be
+        considered valid. Defaults to 20 frames
+
+    Returns:
+        best_df (pandas.DataFrame): Dataframe with dimensions # of states*9
+        rows by 5 columns.
+
+    """
+
+    best_df = pd.DataFrame(columns=["ID", "start_frame", "end_frame", "state", "state_probability"])
+    num_states = len(observation_frame["best_state"].unique())
+    print("Allocating space for dataframe")
+    for state in tqdm(range(num_states)):
+        # Initialize empty arrays to be filled later
+        best_df.at[state, "ID"] = np.zeros(9)
+        best_df.at[state, "start_frame"] = np.zeros(9)
+        best_df.at[state, "end_frame"] = np.zeros(9)
+        best_df.at[state, "state"] = np.zeros(9)
+        best_df.at[state, "state_probability"] = np.zeros(9)
+
+    state_start = 0
+    previous_state = 0
+    previous_prob = 0
+    previous_frame = 0
+
+    print("Finding best examples to tile videos with")
+    time.sleep(1)
+    for index, row in tqdm(observation_frame.iterrows()):
+        current_state = row["best_state"]
+        current_prob = row["state_probability"]
+        current_ID = row["ID"]
+        current_frame = row["raw_frame"]
+
+        if current_state == previous_state:
+            new_state = False
+            if current_prob > previous_prob:
+                previous_prob = current_prob
+            previous_frame = current_frame
+            previous_state = current_state
+            previous_ID = current_ID
+        elif current_state != previous_state:
+            new_state = True
+
+        if new_state:
+            if previous_prob > best_df["state_probability"][previous_state].min():
+                frame_dif = previous_frame - state_start
+                if frame_dif > min_duration:
+                    min_index = best_df["state_probability"][previous_state].argmin()
+                    best_df["state_probability"][previous_state][min_index] = previous_prob
+                    best_df["start_frame"][previous_state][min_index] = state_start
+                    best_df["end_frame"][previous_state][min_index] = previous_frame
+                    best_df["ID"][previous_state][min_index] = previous_ID
+                    best_df["state"][previous_state][min_index] = previous_state
+                    state_start = current_frame
+                    previous_frame = current_frame
+                    previous_prob = current_prob
+                    previous_state = current_state
+                    previous_ID = current_ID
+                    new_state = False
+                else:
+                    state_start = current_frame
+                    previous_frame = current_frame
+                    previous_prob = current_prob
+                    previous_state = current_state
+                    previous_ID = current_ID
+                    new_state = False
+            else:
+                state_start = current_frame
+                previous_frame = current_frame
+                previous_prob = current_prob
+                previous_state = current_state
+                previous_ID = current_ID
+                new_state = False
+
+    return best_df
+
+
+
+
 
