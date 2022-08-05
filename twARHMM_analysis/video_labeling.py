@@ -178,6 +178,7 @@ def separate_videos(state_video_root, model_results_folder, directory_key,
 
     directory_map = pd.read_csv(directory_key)
     for file in pl.Path(model_results_folder).glob("*.npy"):
+        # Load in files from model fit output
         print("Scanning file: {}".format(file))
         file = str(file)
         if re.match(".*log_posteriors.npy", file):
@@ -185,26 +186,30 @@ def separate_videos(state_video_root, model_results_folder, directory_key,
         elif re.match(".*posteriors_states.npy", file):
             states_file = deepcopy(file)
     states = np.load(str(states_file))
-    discrete_states = states[0].sum(axis=2)
+    discrete_states = states[0].sum(axis=2)  # Collapsing time constant axis so each value is overall state probability
     total_states = discrete_states.shape[-1]
     label_array = np.zeros(total_states).astype("int")
+    # Find the likely state for each observation row and store in an array
     final_states = np.array([discrete_states[i].argmax() for i in range(discrete_states.shape[-2])])
     states_frame = pd.DataFrame({"state": final_states})
     observations = pd.read_csv(str(observation_csv))
     states_frame["ID"] = observations.ID
 
     for folder in pl.Path(state_video_root).glob("*mouse*"):
+        # Use ID value to get bath
         id_number = directory_map[directory_map["Directory"] == folder.name].ID.item()
         id_frame = states_frame[states_frame["ID"] == id_number]
+        # TODO: This is hard coded for the 12 state model and should be changed with an f string
         for state_dir in folder.glob("*_12_*"):
             for file in state_dir.glob("state*.mp4"):
                 input_file = ffmpeg.input(file)
                 current_state = 12313
                 current_frame = 0
                 epoch_start = True
-                vid_start = True
+                vid_start = True  # A catch just for the first vid
                 print("Now cutting up the video")
                 for index, frame_state in tqdm(id_frame["state"].items()):
+                    # Check if states are the same as previous, if not, end state and save out the frame range
                     if (frame_state == current_state) & (not epoch_start):
                         current_frame += 1
                     elif frame_state != current_state:
@@ -291,18 +296,25 @@ def append_video_frame_data(observation_frame: pd.DataFrame, alignment_root,
     concat_frame = pd.DataFrame(columns=["raw_frame", "trimmed_frame"])
     print("Matching frames to observations")
     for id_value in tqdm(range(observation_frame["ID"].max()+1)):
+        # Subsect to get just observations of a specific video
         sub_obs = observation_frame[observation_frame["ID"] == id_value]
+        # Grab index to reset later
         index_array = sub_obs.index.to_numpy()
         mouse_directory = directory_map.loc[directory_map["ID"] == id_value].Directory.item()
         alignment_csv = pd.read_csv(str(alignment_root) + mouse_directory + "/Alignment.csv")
+        # Get Sky video alignmnet frame information
         sky_row = alignment_csv.loc[alignment_csv["name"] == "Sky"]
         land_frame = int(sky_row["Land"][0] - 1)
         capture_frame = int(sky_row["TerminalCap"][0])
+        # Frames for uncut video
         raw_frames = np.arange(land_frame, capture_frame, 1)
+        # Frame numbers adjusted for trimmed video indexing
         trimmed_frames = np.arange(0, capture_frame-land_frame, 1)
         add_frame = pd.DataFrame(columns=["raw_frame", "trimmed_frame"])
         add_frame["raw_frame"] = raw_frames
         add_frame["trimmed_frame"] = trimmed_frames
+        # Reassigning index to match original slice for concat purposes when merging
+        # the two data frames
         add_frame.index = index_array
         concat_frame = pd.concat([concat_frame, add_frame])
 
@@ -395,7 +407,41 @@ def best_state_examples(observation_frame: pd.DataFrame, min_duration: int = 20)
 
     return best_df
 
+# TODO: Create function to tile videos.
+#  Inputs: Dataframe containing - ID, Start frame, End frame, State, State Probability
+#  Ideas on approach: Take all videos, trim, and pipe them into np arrays. These arrays
+#  can then be stacked. Take first three and hstack them, next three hstack, final three
+#  hstack, then vstack the hstacks. Then use openCV to scale them down to a 1920x1080 res
+#  for final export at 30 or 60 hz.
+#  Design theory: One function for trimming videos since it seems to be somehting I repeat
+#  One function for creating stacks, one function for resizing. Also need a function for blanks
+#  Resources: Tiling - https://answers.opencv.org/question/175912/how-to-display-multiple-images-in-one-window/
+#  Scaling - https://www.codingforentrepreneurs.com/blog/open-cv-python-change-video-resolution-or-scale/
 
 
+def create_blank(width: int = 640, height: int = 360, rgb_color: tuple = (0, 0, 0)):
+    """
+    Create new image(numpy array) filled with certain color in BGR
+
+    Args:
+        width (int): Width of blank image in pixels
+        height (int): Height of blank image in pixels
+        rgb_color (tuple): tuple of RGB values for creating color of blank
+         image
+
+    Returns:
+        image (numpy.ndarray): numpy array with height rows x width columns.
+         Values are BGR color values as is standard for openCV images.
+
+    """
+    # Create black blank image
+    image = np.zeros((height, width, 3), np.uint8)
+
+    # Since OpenCV uses BGR, convert the color first
+    color = tuple(reversed(rgb_color))
+    # Fill image with color
+    image[:] = color
+
+    return image
 
 
