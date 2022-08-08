@@ -445,3 +445,36 @@ def create_blank(width: int = 640, height: int = 360, rgb_color: tuple = (0, 0, 
     return image
 
 
+def trimmed_video(file: str, start_frame: int, end_frame: int,
+                  resolution: tuple = (1920, 1080)) -> np.ndarray:
+    """
+    Takes input file, trims the duration to the given start and end frame, and
+    then pipes it into a buffer to returned as an np.ndarray
+    Args:
+        file (str): The absolute file path for ffmpeg to read in
+        start_frame (int): first frame of final video
+        end_frame (int): final frame of final video
+        resolution (tuple): Resolution as int values in (horizontal, vertical)
+         order: (x, y)
+
+    Returns:
+        video (numpy.ndarray): Numpy array with rows = vertical resolution and
+         columns = horizontal resolution. Each value is a BGR tuple for use in
+         OpenCV
+    """
+    input_file = ffmpeg.input(file)
+    trimmed = input_file.trim(start_frame=start_frame, end_frame=end_frame)
+    trimmed_reset = trimmed.setpts('PTS-STARTPTS')
+    out = ffmpeg.output(trimmed_reset, "pipe:", f="rawvideo", pix_fmt="rgb24")
+    feed, _ = out.run(capture_stdout=True)
+    video = (
+        np
+        .frombuffer(feed, np.uint8)
+        .reshape([-1, resolution[1], resolution[0], 3])
+    )
+    return video
+
+
+def stack_videos(list_of_videos):
+    num_vids = len(list_of_videos)
+
