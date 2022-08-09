@@ -28,6 +28,9 @@ processed_save_folder_root = SETTINGS.local_processed_data_dir
 """
 
 
+# TODO: Replace the internal trimming steps with the new funciton written below.
+#  Also reorganize the functions so this is towards the bottom since it will rely
+#  on other functions
 def state_label_videos(video_root, directory_key, observation_csv,
                        model_results_folder, mouse_processed_folder, save_folder,
                        mouse,
@@ -35,6 +38,7 @@ def state_label_videos(video_root, directory_key, observation_csv,
     """
     Takes videos and labels each frame with the state the twARHMM predicts the
     mouse + cricket are in.
+
     Args:
         video_root (pathlib.Path or str): Path to folder containing all the
         raw mouse folders which have the videos to be labeled.
@@ -165,6 +169,7 @@ def separate_videos(state_video_root, model_results_folder, directory_key,
     Takes a bunch of pre_made state videos and cuts them into one video per state
     cluster. This can result in hundreds of video per trial depending on how often
     the state switches.
+
     Args:
         state_video_root ():
         model_results_folder ():
@@ -242,6 +247,7 @@ def append_estimated_states(observation_frame: pd.DataFrame,
     """
     Function for adding the inferred state for each frame in a video as well as
     the probability associated with that inferred state.
+
     Args:
         observation_frame (pandas.DataFrame):Dataframe containing all observations
         used for training the model. Frame values will be appended to this frame.
@@ -419,7 +425,7 @@ def best_state_examples(observation_frame: pd.DataFrame, min_duration: int = 20)
 #  Scaling - https://www.codingforentrepreneurs.com/blog/open-cv-python-change-video-resolution-or-scale/
 
 
-def create_blank(width: int = 640, height: int = 360, rgb_color: tuple = (0, 0, 0)):
+def create_blank(width: int = 1920, height: int = 1080, rgb_color: tuple = (0, 0, 0)):
     """
     Create new image(numpy array) filled with certain color in BGR
 
@@ -434,11 +440,12 @@ def create_blank(width: int = 640, height: int = 360, rgb_color: tuple = (0, 0, 
          Values are BGR color values as is standard for openCV images.
 
     """
-    # Create black blank image
+    # Create blank image
     image = np.zeros((height, width, 3), np.uint8)
 
-    # Since OpenCV uses BGR, convert the color first
+    # Convert color to BGR for OpenCV operations
     color = tuple(reversed(rgb_color))
+
     # Fill image with color
     image[:] = color
 
@@ -446,10 +453,11 @@ def create_blank(width: int = 640, height: int = 360, rgb_color: tuple = (0, 0, 
 
 
 def trimmed_video(file: str, start_frame: int, end_frame: int,
-                  resolution: tuple = (1920, 1080)) -> np.ndarray:
+                  resolution: tuple = (1440, 1080)) -> np.ndarray:
     """
     Takes input file, trims the duration to the given start and end frame, and
     then pipes it into a buffer to returned as an np.ndarray
+
     Args:
         file (str): The absolute file path for ffmpeg to read in
         start_frame (int): first frame of final video
@@ -475,6 +483,77 @@ def trimmed_video(file: str, start_frame: int, end_frame: int,
     return video
 
 
-def stack_videos(list_of_videos):
+# TODO: Need to add blank frames for empty vid slots. Need to loop videos to make sure
+#  they match length of longest video. Unsure if this should be separate funciton or not
+def loop_videos(list_of_videos):
+    max_length = 0
+    for vid in list_of_videos:
+        if vid.shape[0] > max_length:
+            max_length = vid.shape[0]
+    for i, vid in enumerate(list_of_videos):
+        initial_length = vid.shape[0]
+        while vid.shape[0] < max_length:
+            diff = max_length - vid.shape[0]
+            # Either append the entire video or just the difference to loop, whichever is shorter
+            append_vid = vid[0:min(diff, initial_length), :, :, :]
+            vid = np.concatenate((vid, append_vid), axis=0)
+        list_of_videos[i] = vid
+    return list_of_videos, max_length
+
+
+def stack_videos(list_of_videos: list):
     num_vids = len(list_of_videos)
+    vid_dim = list_of_videos[0].shape
+    if num_vids < 2:
+        raise IndexError("Number of videos must be two or more to make a stack!")
+    if num_vids > 9:
+        raise IndexError("Number of videos must be less than or equal to 9 to tile reasonably!")
+    # Loop videos to match length to max
+    list_of_videos, max_length = loop_videos(list_of_videos)
+    first_stack = list_of_videos[0:min(3, num_vids)]
+    if len(first_stack) < 3:
+        sec = False
+        third = False
+        blank_frame = create_blank(vid_dim[2], vid_dim[1])
+        blank_vid = np.stack(max_length*[blank_frame])
+        first_stack.append(blank_vid)
+        final_vid = np.concatenate(first_stack, axis=2)
+    elif num_vids == 3:
+        final_vid = np.concatenate(first_stack, axis=2)
+    else:
+        sec = True
+
+    if sec and num_vids > 3:
+        second_stack = list_of_videos[3:min(6, num_vids)]
+        if len(second_stack) < 3:
+            third = False
+            blank_frame = create_blank(vid_dim[2], vid_dim[1])
+            blank_vid = np.stack(max_length * [blank_frame])
+            second_stack.append(blank_vid)
+            stack1 = np.concatenate(first_stack, axis=2)
+            stack2 = np.concatenate(second_stack, axis=2)
+            final_vid = np.concatenate((stack1, stack2), axis=1)
+        elif num_vids == 6:
+            stack1 = np.concatenate(first_stack, axis=2)
+            stack2 = np.concatenate(second_stack, axis=2)
+            final_vid = np.concatenate((stack1, stack2), axis=1)
+        else:
+            third = True
+
+    if third and num_vids > 6:
+        third_stack = list_of_videos[6:]
+        if len(third_stack) < 3:
+            blank_frame = create_blank(vid_dim[2], vid_dim[1])
+            blank_vid = np.stack(max_length * [blank_frame])
+            third_stack.append(blank_vid)
+        stack1 = np.concatenate(first_stack, axis=2)
+        stack2 = np.concatenate(second_stack, axis=2)
+        stack3 = np.concatenate(third_stack, axis=2)
+        final_vid = np.concatenate((stack1, stack2, stack3), axis=1)
+
+    return final_vid
+
+# TODO: Scale video function so they arent 4000x3000 dimension vids
+
+
 
