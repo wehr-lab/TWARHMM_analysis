@@ -502,66 +502,97 @@ def loop_videos(list_of_videos):
 
 
 def stack_videos(list_of_videos: list):
+    """
+
+    Args:
+        list_of_videos (list): List of 4-dimensional numpy.ndarrays with dimensions
+         (time/frame info, vertical resolution, horizontal resolution, color)
+
+    Returns:
+        final_vid (numpy.ndarray): 4-dimensional array with the following properties/order:
+         (time/frame info, vertical resolution, horizontal resolution, color)
+
+    """
     num_vids = len(list_of_videos)
     vid_dim = list_of_videos[0].shape
     if num_vids < 2:
         raise IndexError("Number of videos must be two or more to make a stack!")
     if num_vids > 9:
         raise IndexError("Number of videos must be less than or equal to 9 to tile reasonably!")
-    # Loop videos to match length to max
-    list_of_videos, max_length = loop_videos(list_of_videos)
+    list_of_videos, max_length = loop_videos(list_of_videos)  # Loop videos to match length to max
     first_stack = list_of_videos[0:min(3, num_vids)]
     if len(first_stack) < 3:
         sec = False
         third = False
-        blank_frame = create_blank(vid_dim[2], vid_dim[1])
-        blank_vid = np.stack(max_length*[blank_frame])
-        first_stack.append(blank_vid)
-        final_vid = np.concatenate(first_stack, axis=2)
+        final_vid = np.concatenate(first_stack, axis=2)  # Horizontally stacks videos
     elif num_vids == 3:
-        final_vid = np.concatenate(first_stack, axis=2)
+        sec = False
+        third = False
+        final_vid = np.concatenate(first_stack, axis=2)  # Horizontally stacks videos
     else:
         sec = True
+        third = False
 
     if sec and num_vids > 3:
         second_stack = list_of_videos[3:min(6, num_vids)]
         if len(second_stack) < 3:
             third = False
+            # Add in a blank frame so that the 3x2 array of videos stays aligned
             blank_frame = create_blank(vid_dim[2], vid_dim[1])
             blank_vid = np.stack(max_length * [blank_frame])
             second_stack.append(blank_vid)
-            stack1 = np.concatenate(first_stack, axis=2)
-            stack2 = np.concatenate(second_stack, axis=2)
-            final_vid = np.concatenate((stack1, stack2), axis=1)
+            stack1 = np.concatenate(first_stack, axis=2)  # Horizontally stacks videos
+            stack2 = np.concatenate(second_stack, axis=2)  # Horizontally stacks videos
+            final_vid = np.concatenate((stack1, stack2), axis=1)  # Vertically stacks videos
         elif num_vids == 6:
-            stack1 = np.concatenate(first_stack, axis=2)
-            stack2 = np.concatenate(second_stack, axis=2)
-            final_vid = np.concatenate((stack1, stack2), axis=1)
+            third = False
+            stack1 = np.concatenate(first_stack, axis=2)  # Horizontally stacks videos
+            stack2 = np.concatenate(second_stack, axis=2)  # Horizontally stacks videos
+            final_vid = np.concatenate((stack1, stack2), axis=1)  # Horizontally stacks videos
         else:
             third = True
 
     if third and num_vids > 6:
         third_stack = list_of_videos[6:]
         if len(third_stack) < 3:
+            # Add in blank frame so that 3x3 array of videos stays aligned
             blank_frame = create_blank(vid_dim[2], vid_dim[1])
             blank_vid = np.stack(max_length * [blank_frame])
             third_stack.append(blank_vid)
-        stack1 = np.concatenate(first_stack, axis=2)
-        stack2 = np.concatenate(second_stack, axis=2)
-        stack3 = np.concatenate(third_stack, axis=2)
-        final_vid = np.concatenate((stack1, stack2, stack3), axis=1)
+        stack1 = np.concatenate(first_stack, axis=2)  # Horizontally stacks videos
+        stack2 = np.concatenate(second_stack, axis=2)  # Horizontally stacks videos
+        stack3 = np.concatenate(third_stack, axis=2)  # Horizontally stacks videos
+        final_vid = np.concatenate((stack1, stack2, stack3), axis=1)  # Horizontally stacks videos
 
     return final_vid
 
 
 # TODO: Scale video function so they arent 4000x3000 dimension vids
-def rescale_vid(vid, h_fraction=0.50, v_fraction=0.50):
+def rescale_vid(vid: np.ndarray, h_fraction: float = 0.50, v_fraction: float = 0.50):
+    """
+
+    Args:
+        vid (numpy.ndarray): 4-dimensional array with the following properties/order:
+         (time/frame info, vertical resolution, horizontal resolution, color)
+        h_fraction (float): Value by which to scale horizontal resolution up or down.
+         A value of 1 would leave the dimension as is
+        v_fraction (float): Value by which to scale vertical resolution up or down. A
+         value of 1 would leave the dimension as is.
+
+    Returns:
+        scaled_vid (numpy.ndarray): 4-dimensional array with the following properties/order:
+         (time/frame info, vertical resolution, horizontal resolution, color). Vertical and
+         horizontal resolution columns will be equal to original vid dimensions multiplied
+         by the fraction input of each dimension.
+
+    """
     resized_stack = []
     new_width = int(vid.shape[2] * h_fraction)
     new_height = int(vid.shape[1] * v_fraction)
     dsize = (new_width, new_height)
     print("Rescaling video...")
     for frame in tqdm(range(vid.shape[0])):
+        # I don't know which interpolation method is best. Either INTER_CUBIC or INTER_AREA
         resized_image = cv2.resize(vid[frame,:,:,:], dsize, interpolation=cv2.INTER_CUBIC)
         resized_stack.append(resized_image)
     print("Recompiling frames for export. This may take a minute...")
