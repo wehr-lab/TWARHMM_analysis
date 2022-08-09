@@ -553,7 +553,20 @@ def stack_videos(list_of_videos: list):
 
     return final_vid
 
-# TODO: Scale video function so they arent 4000x3000 dimension vids
 
+# TODO: Scale video function so they arent 4000x3000 dimension vids
+def rescale_vid(vid, h_fraction=0.50, v_fraction=0.50):
+    resized_stack = []
+    new_width = int(vid.shape[2] * h_fraction)
+    new_height = int(vid.shape[1] * v_fraction)
+    dsize = (new_width, new_height)
+    print("Rescaling video...")
+    for frame in tqdm(range(vid.shape[0])):
+        resized_image = cv2.resize(vid[frame,:,:,:], dsize, interpolation=cv2.INTER_CUBIC)
+        resized_stack.append(resized_image)
+    print("Recompiling frames for export. This may take a minute...")
+    scaled_vid = np.stack(np.array(resized_stack))
+
+    return scaled_vid
 
 
