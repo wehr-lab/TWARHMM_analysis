@@ -3,7 +3,7 @@ import jax.random as jr
 import pandas as pd
 import time
 import os
-import pathlib
+import pathlib as pl
 
 from ssm.twarhmm import GaussianTWARHMM
 from ssm.utils import random_rotation
@@ -121,7 +121,7 @@ lps, twarhmm, posteriors = twarhmm.fit(data_array)
 
 expected_states = posteriors.expected_states
 pathname = "/projects/wehrlab/shared/twARHMM_results/"+time.asctime()
-path = pathlib.Path(pathname)
+path = pl.Path(pathname)
 os.mkdir(path)
 np.save(pathname+"posteriors_states.npy", expected_states)
 np.save(pathname+"log_posteriors.npy", lps)
