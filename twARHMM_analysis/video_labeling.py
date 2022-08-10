@@ -8,6 +8,10 @@ import pathlib as pl
 from twARHMM_analysis import video_utils as vu
 from twARHMM_analysis import SETTINGS
 
+# TODO: Add in functionality for changing the mouse/taking in a list of mice.
+#  Also need to be able to cycle through multiple different models in an automated
+#  way instead of the hard coded states file I currently have.
+#  ADD IN LINE COMMENTS
 video_to_label_pattern = 'Sky_mouse*[!labeled].mp4'
 
 mouse = "0428"
